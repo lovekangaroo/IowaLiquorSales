@@ -1,0 +1,278 @@
+hdfs verision     ////find the verison of hadoop
+
+lscpu      ///find the cpu speed
+
+nproc      ///find #of cpu core
+
+ yarn node -list -all        ////find #of nodes listed 3, only shows working node, not showing master nodes
+
+hdfs dfs -df -h            ///find hard drive size
+
+scp C:/Users/wetha/Downloads/Iowa_Liquor_Sales.csv.zip wlaw4@144.24.53.159:~
+
+ssh wlaw4@144.24.53.159
+
+unzip Iowa_Liquor_Sales.csv.zip
+
+hdfs dfs -mkdir TermProject
+hdfs dfs -ls
+hdfs dfs -put Iowa_Liquor_Sales.csv TermProject/
+hdfs dfs -ls TermProject/
+
+wc -l Iowa_Liquor_Sales.csv         ////To count the number of rows:
+
+head -n 1 Iowa_Liquor_Sales.csv | tr ',' '\n' | wc -l       /////To count the number of columns in the CSV file, you can use the following command:
+
+head -n 1 Iowa_Liquor_Sales.csv   //////list the header row or show header row name
+
+hdfs dfs -chmod  -R og+rwx /user/wlaw4/TermProject/         ////to share the directory
+
+beeline
+
+CREATE DATABASE if not exists wlaw4;
+show database;
+use wlaw4;
+
+DROP TABLE IF EXISTS iowaliquorsales;
+
+CREATE EXTERNAL TABLE IF NOT EXISTS iowaliquorsales(`Invoice/Item Number` string, `Date` string, `Store Number` string, `Store Name` string, `Address` string, `City` string, `Zip Code` string, `Store Location` string, `County Number` string, `County` string, `Category` string, `Category Name` string, `Vendor Number` string, `Vendor Name` string, `Item Number` string, `Item Description` string, `Pack` string, `Bottle Volume (ml)` string, `State Bottle Cost` string, `State Bottle Retail` string, `Bottles Sold` string, `Sale (Dollars)` string, `Volume Sold (Liters)` string, `Volume Sold (Gallons)` string)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+WITH SERDEPROPERTIES (
+   'separatorChar' = ',',
+   'quoteChar'     = '"',
+   'escapeChar'    = '\\'
+)
+STORED AS TEXTFILE LOCATION '/user/wlaw4/TermProject/'
+TBLPROPERTIES ('skip.header.line.count'='1');
+
+
+show tables;
+select * from iowaliquorsales limit 10
+
+CREATE TABLE iowaliquorsales2 (`Invoice/Item Number` string, `Sales Date` date, 
+`Store Number` string, `Store Name` string, `Address` string, `City` string, `Zip Code` string, `longitude` string, `latitude` string, `County Number` int, `County` string, `Category` string,
+`Category Name` string, `Vendor Number` int, `Vendor Name` string, `Item Number` int,
+`Item Description` string, `Pack` int, `Bottle Volume (ml)` int, `State Bottle Cost` decimal(10,2),
+`State Bottle Retail` decimal(10,2), `Bottles Sold` bigint, `Sale (Dollars)` bigint, 
+`Volume Sold (Liters)` bigint, `Volume Sold (Gallons)` bigint);
+
+
+INSERT INTO iowaliquorsales2
+SELECT `Invoice/Item Number`,
+  cast(to_date(from_unixtime(unix_timestamp(`Sales Date`, 'MM/dd/yyyy'))) as date) as `Sales Date`, `Store Number`, `Store Name`, `Address`, `City`, `Zip Code`,
+  regexp_extract(`Store Location`, '\\(([^\\s]+)\\s+([^\\s]+)\\)', 1) AS longitude,
+  regexp_extract(`Store Location`, '\\(([^\\s]+)\\s+([^\\s]+)\\)', 2) AS latitude,
+  `County Number`, `County`, `Category`, `Category Name`, `Vendor Number`, `Vendor Name`,
+  `Item Number`, `Item Description`, `Pack`, `Bottle Volume (ml)`, `State Bottle Cost`,
+  `State Bottle Retail`, `Bottles Sold`,
+  CAST(`Sale (Dollars)` AS bigint) AS `Sale (Dollars)`,
+  CAST(`Volume Sold (Liters)` AS bigint) AS `Volume Sold (Liters)`,
+  CAST(`Volume Sold (Gallons)` AS bigint) AS `Volume Sold (Gallons)`
+FROM iowaliquorsales
+WHERE year(cast(to_date(from_unixtime(unix_timestamp(`Sales Date`, 'MM/dd/yyyy'))) as date)) BETWEEN 2012 AND 2022;
+
+show tables;
+drop table iowaliquorsales;
+ALTER TABLE iowaliquorsales2 RENAME TO iowaliquorsales;
+show tables;
+describe iowaliquorsales;
+
+SELECT 
+  YEAR(`sales date`) AS `Year`, 
+  SUM(`Sale (Dollars)`) AS `Total Sales (Dollars)`, 
+  SUM(`Volume Sold (Liters)`) AS `Total Liters Sold` 
+FROM iowaliquorsales 
+GROUP BY YEAR(`sales date`) 
+ORDER BY `Year` ASC;
+
+
+SELECT cur.`Sales Year`, cur.`Total Liters Sold`, round(100 * ((cur.`Total Liters Sold` / prev.`Total Liters Sold`) - 1), 2) AS `Liquor Sales annual % chg`
+FROM (SELECT
+    year(`Sales Date`) AS `Sales Year`,
+    sum(`Volume Sold (Liters)`) AS `Total Liters Sold`
+  FROM iowaliquorsales
+  GROUP BY year(`Sales Date`)) cur
+LEFT JOIN (SELECT year(`Sales Date`) AS `Sales Year`, 
+         sum(`Volume Sold (Liters)`) AS `Total Liters Sold`
+  FROM iowaliquorsales
+  GROUP BY year(`Sales Date`)) prev ON cur.`Sales Year` = prev.`Sales Year` + 1
+ORDER BY cur.`Sales Year` ASC;
+
+
+SELECT `County`, SUM(`Volume Sold (Liters)`) AS `Total Liters Sold`
+FROM `iowaliquorsales`
+GROUP BY `County`
+ORDER BY `Total Liters Sold` DESC;
+
+SELECT x.County,
+MAX(CASE WHEN y.Year = '2012' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2012`,
+MAX(CASE WHEN y.Year = '2013' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2013`,
+MAX(CASE WHEN y.Year = '2014' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2014`,
+MAX(CASE WHEN y.Year = '2015' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2015`,
+MAX(CASE WHEN y.Year = '2016' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2016`,
+MAX(CASE WHEN y.Year = '2017' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2017`,
+MAX(CASE WHEN y.Year = '2018' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2018`,
+MAX(CASE WHEN y.Year = '2019' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2019`,
+MAX(CASE WHEN y.Year = '2020' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2020`,
+MAX(CASE WHEN y.Year = '2021' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2021`,
+MAX(CASE WHEN y.Year = '2022' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2022`
+FROM (
+SELECT '2012' AS Year UNION ALL SELECT '2013' UNION ALL SELECT '2014' UNION ALL SELECT '2015' UNION ALL SELECT '2016' UNION ALL
+SELECT '2017' UNION ALL SELECT '2018' UNION ALL SELECT '2019' UNION ALL SELECT '2020' UNION ALL SELECT '2021' UNION ALL SELECT '2022'
+) y
+CROSS JOIN (
+SELECT DISTINCT County FROM iowaliquorsales WHERE county IN ('POLK', 'LINN', 'SCOTT', 'JOHNSON', 'BLACK HAWK')
+) x
+LEFT JOIN (
+SELECT County, YEAR(`Sales Date`) AS `Sales Year`, SUM(COALESCE(`Volume Sold (Liters)`, 0D)) AS Total_Liters_Sold
+FROM iowaliquorsales
+WHERE county IN ('POLK', 'LINN', 'SCOTT', 'JOHNSON', 'BLACK HAWK')
+GROUP BY County, YEAR(`Sales Date`)
+) t
+ON x.County = t.County AND y.Year = CAST(t.`Sales Year` AS STRING)
+GROUP BY x.County
+ORDER BY x.County ASC;
+
+
+SELECT `Store Number`, `Store Name`, `City`,`Zip Code`,`Latitude`,`Longitude`,
+       SUM(`Volume Sold (Liters)`) AS `Total Liter Sold`
+FROM iowaliquorsales
+WHERE County = 'POLK',
+
+SELECT
+  DATE_FORMAT(`sales date`, 'yyyy-MM-dd') AS `Sale Date`,
+  DATE_FORMAT(`sales date`, 'yyyy-MM') AS `Sale Month`,
+  YEAR(`sales date`) AS `Sale Year`,
+  SUM(`Volume Sold (Liters)`) AS `Total Liters Sold`
+FROM iowaliquorsales
+GROUP BY
+  DATE_FORMAT(`sales date`, 'yyyy-MM-dd'),
+  DATE_FORMAT(`sales date`, 'yyyy-MM'),
+  YEAR(`sales date`)
+ORDER BY `Sale Date` ASC;
+
+INSERT OVERWRITE DIRECTORY '/user/wlaw4/tmp/IALiqSalesQuery/' 
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+SELECT cur.`Sales Year`,
+       cur.`Total Liters Sold`,
+       round(100 * ((cur.`Total Liters Sold` / prev.`Total Liters Sold`) - 1), 2) AS `Liquor Sales annual % chg`
+FROM (SELECT
+    year(`Sales Date`) AS `Sales Year`,
+    sum(`Volume Sold (Liters)`) AS `Total Liters Sold`
+  FROM iowaliquorsales
+  GROUP BY year(`Sales Date`)
+) cur
+LEFT JOIN (
+  SELECT year(`Sales Date`) AS `Sales Year`, 
+         sum(`Volume Sold (Liters)`) AS `Total Liters Sold`
+  FROM iowaliquorsales
+  GROUP BY year(`Sales Date`)
+) prev ON cur.`Sales Year` = prev.`Sales Year` + 1
+ORDER BY cur.`Sales Year` ASC;
+
+hdfs dfs -cat tmp/IALiqSalesQuery/000000_0 | tail -n 2
+hdfs dfs -ls ./tmp/IALiqSalesQuery/
+hdfs dfs -get ./tmp/IALiqSalesQuery/000000_0 AnnualSalesTrend.csv
+tail -n 2 AnnualSalesTrend.csv
+$ scp wlaw4@144.24.53.159:/home/wlaw4/AnnualSalesTrend.csv .
+
+
+INSERT OVERWRITE DIRECTORY '/user/wlaw4/tmp/PolkDetail/'
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+SELECT `Store Number`, `Store Name`, `City`, `Zip Code`, `Latitude`, `Longitude`,
+SUM(`Volume Sold (Liters)`) AS `Total Liter Sold`
+FROM iowaliquorsales
+WHERE County = 'POLK'
+
+hdfs dfs -cat tmp/PolkDetail/000000_0 | tail -n 2
+hdfs dfs -ls ./tmp/PolkDetail/
+hdfs dfs -get ./tmp/PolkDetail/000000_0 PolkDetail.csv
+tail -n 2 PolkDetail.csv
+
+$ scp wlaw4@144.24.53.159:/home/wlaw4/PolkDetail.csv .
+
+INSERT OVERWRITE DIRECTORY '/user/wlaw4/tmp/Top5CountyByYr/'
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+SELECT x.County,
+MAX(CASE WHEN y.Year = '2012' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2012`,
+MAX(CASE WHEN y.Year = '2013' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2013`,
+MAX(CASE WHEN y.Year = '2014' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2014`,
+MAX(CASE WHEN y.Year = '2015' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2015`,
+MAX(CASE WHEN y.Year = '2016' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2016`,
+MAX(CASE WHEN y.Year = '2017' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2017`,
+MAX(CASE WHEN y.Year = '2018' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2018`,
+MAX(CASE WHEN y.Year = '2019' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2019`,
+MAX(CASE WHEN y.Year = '2020' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2020`,
+MAX(CASE WHEN y.Year = '2021' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2021`,
+MAX(CASE WHEN y.Year = '2022' THEN COALESCE(t.Total_Liters_Sold, 0) ELSE NULL END) AS `2022`
+FROM (
+SELECT '2012' AS Year UNION ALL SELECT '2013' UNION ALL SELECT '2014' UNION ALL SELECT '2015' UNION ALL SELECT '2016' UNION ALL
+SELECT '2017' UNION ALL SELECT '2018' UNION ALL SELECT '2019' UNION ALL SELECT '2020' UNION ALL SELECT '2021' UNION ALL SELECT '2022'
+) y
+CROSS JOIN (
+SELECT DISTINCT County FROM iowaliquorsales WHERE county IN ('POLK', 'LINN', 'SCOTT', 'JOHNSON', 'BLACK HAWK')
+) x
+LEFT JOIN (
+SELECT County, YEAR(`Sales Date`) AS `Sales Year`, SUM(COALESCE(`Volume Sold (Liters)`, 0D)) AS Total_Liters_Sold
+FROM iowaliquorsales
+WHERE county IN ('POLK', 'LINN', 'SCOTT', 'JOHNSON', 'BLACK HAWK')
+GROUP BY County, YEAR(`Sales Date`)
+) t
+ON x.County = t.County AND y.Year = CAST(t.`Sales Year` AS STRING)
+GROUP BY x.County
+ORDER BY x.County ASC;
+
+hdfs dfs -cat tmp/Top5CountyByYr/000000_0 | tail -n 2
+hdfs dfs -ls ./tmp/Top5CountyByYr/
+hdfs dfs -get ./tmp/Top5CountyByYr/000000_0 Top5CountyByYr.csv
+tail -n 2 Top5CountyByYr.csv
+scp wlaw4@144.24.53.159:/home/wlaw4/Top5CountyByYr.csv .
+
+
+INSERT OVERWRITE DIRECTORY '/user/wlaw4/tmp/TotalSalesDoandLiter/'
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+SELECT 
+  YEAR(`sales date`) AS `Year`, 
+  SUM(`Sale (Dollars)`) AS `Total Sales (Dollars)`, 
+  SUM(`Volume Sold (Liters)`) AS `Total Liters Sold` 
+FROM iowaliquorsales 
+GROUP BY YEAR(`sales date`) 
+ORDER BY `Year` ASC;
+
+hdfs dfs -cat tmp/TotalSalesDoandLiter/000000_0 | tail -n 2
+hdfs dfs -ls ./tmp/TotalSalesDoandLiter/
+hdfs dfs -get ./tmp/TotalSalesDoandLiter/000000_0 TotalSalesDoandLiter.csv
+tail -n 2 TotalSalesDoandLiter.csv
+scp wlaw4@144.24.53.159:/home/wlaw4/TotalSalesDoandLiter.csv .
+
+INSERT OVERWRITE DIRECTORY '/user/wlaw4/tmp/TotalLiterSoldbyDate/'
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+SELECT
+  DATE_FORMAT(`sales date`, 'yyyy-MM-dd') AS `Sale Date`,
+  DATE_FORMAT(`sales date`, 'yyyy-MM') AS `Sale Month`,
+  YEAR(`sales date`) AS `Sale Year`,
+  SUM(`Volume Sold (Liters)`) AS `Total Liters Sold`
+FROM
+  iowaliquorsales
+GROUP BY
+  DATE_FORMAT(`sales date`, 'yyyy-MM-dd'),
+  DATE_FORMAT(`sales date`, 'yyyy-MM'),
+  YEAR(`sales date`)
+ORDER BY
+  `Sale Date` ASC;
+  
+hdfs dfs -cat tmp/TotalLiterSoldbyDate/000000_0 | tail -n 2
+hdfs dfs -ls ./tmp/TotalLiterSoldbyDate/
+hdfs dfs -get ./tmp/TotalLiterSoldbyDate/000000_0 TotalLiterSoldbyDate.csv
+tail -n 2 TotalLiterSoldbyDate.csv
+scp wlaw4@144.24.53.159:/home/wlaw4/TotalLiterSoldbyDate.csv .
+
+
+
+
+
+
+
+
+
+
